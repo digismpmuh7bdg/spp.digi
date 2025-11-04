@@ -2875,85 +2875,6 @@
             `;
         }
 
-        /**
-         * Filter transaksi global berdasarkan tipe
-         * @param {Array} transactions Array transaksi global
-         * @param {string} filterType Tipe filter (ALL, SPP, DSP, NON_SPP, INCOME, EXPENSE)
-         * @returns {Array} Transaksi yang sudah difilter
-         */
-        function filterGlobalTransactions(transactions, filterType) {
-            if (filterType === 'ALL') {
-                return transactions;
-            }
-            
-            return transactions.filter(t => {
-                if (filterType === 'INCOME') return t.isIncome;
-                if (filterType === 'EXPENSE') return !t.isIncome;
-                
-                return t.type === filterType;
-            });
-        }
-        
-        /**
-         * Mengeksport data riwayat transaksi global yang sudah difilter ke format CSV (delimiter ; dan BOM).
-         * @param {Array} transactions Array transaksi yang sudah difilter.
-         */
-        function exportFullTransactionHistoryToCSV(transactions) {
-            if (transactions.length === 0) {
-                return showModal("Tidak ada data transaksi untuk diexport.", false, "Export Gagal");
-            }
-
-            const CSV_DELIMITER_TX = ';';
-            const BOM_CHAR = '\ufeff';
-
-            const headerRow = [
-                'WAKTU_TRANSAKSI', 
-                'SUMBER/PENERIMA', 
-                'KETERANGAN', 
-                'TIPE', 
-                'JUMLAH', 
-                'PENCATAT',
-                'ID_DOC_FIREBASE'
-            ].join(CSV_DELIMITER_TX);
-
-            const dataRows = transactions.map(t => {
-                const time = dayDateFormatter.format(t.timestamp) + ' ' + timeFormatter.format(t.timestamp);
-                const description = String(t.description || '').replace(/"/g, '""');
-                const amount = t.amount;
-                // Pastikan tipe di konversi ke format yang mudah dibaca
-                const type = t.type === 'INCOME' ? 'PEMASUKAN' : (t.type === 'EXPENSE' ? 'PENGELUARAN' : t.type);
-                const recordedBy = t.recordedBy || 'N/A';
-                const source = String(t.source || '').replace(/"/g, '""');
-
-                // Menggunakan quotes untuk field yang mungkin mengandung semicolon atau koma (deskripsi/sumber)
-                return [
-                    `"${time}"`, 
-                    `"${source}"`,
-                    `"${description}"`, 
-                    type,
-                    amount, // Biarkan angka murni
-                    recordedBy,
-                    t.id
-                ].join(CSV_DELIMITER_TX);
-            }).join('\n');
-
-            const finalCsv = BOM_CHAR + headerRow + '\n' + dataRows;
-            const blob = new Blob([finalCsv], { type: "text/csv;charset=utf-8;" });
-            
-            const link = document.createElement("a");
-            const url = URL.createObjectURL(blob);
-            link.setAttribute("href", url);
-            link.setAttribute("download", `Riwayat_Transaksi_Global_${new Date().toISOString().slice(0,10)}.csv`);
-            
-            link.style.visibility = 'hidden';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            
-            showModal("Riwayat Transaksi Global berhasil diexport sebagai file CSV.", false, "Export Sukses");
-        }
-
-
         // --- RIWAYAT TRANSAKSI GLOBAL ---
         function renderFullTransactionHistoryPage(container) {
             // 1. Gabungkan semua transaksi (Siswa dan Kas)
@@ -3015,11 +2936,7 @@
             // 2. Urutkan berdasarkan waktu terbaru
             allTransactions.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
 
-            // 3. Tentukan filter aktif dan terapkan filter
-            const activeFilter = sessionStorage.getItem('globalTxFilter') || 'ALL';
-            const filteredTransactions = filterGlobalTransactions(allTransactions, activeFilter);
-
-            const rows = filteredTransactions.map(t => {
+            const rows = allTransactions.map(t => {
                 const amountClass = t.isIncome ? 'text-green-700' : 'text-red-700';
                 const typeClass = t.isIncome ? 'text-green-600' : 'text-red-600';
                 const displayType = t.type === 'INCOME' ? 'PEMASUKAN' : (t.type === 'EXPENSE' ? 'PENGELUARAN' : t.type);
@@ -3040,27 +2957,6 @@
             
             container.innerHTML = `
                 <h1 class="text-3xl font-bold text-gray-800 mb-6">Riwayat Transaksi Global</h1>
-                
-                <!-- Filter and Download Section -->
-                <div class="bg-white rounded-xl shadow-lg p-4 mb-4 flex justify-between items-center flex-wrap gap-4">
-                    <div class="flex items-center space-x-4">
-                        <label for="tx-filter-select" class="text-sm font-medium text-gray-700">Filter Tipe Transaksi:</label>
-                        <select id="tx-filter-select" class="px-3 py-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 w-48">
-                            <option value="ALL">Semua Transaksi</option>
-                            <option value="SPP">SPP Siswa</option>
-                            <option value="DSP">DSP Siswa</option>
-                            <option value="NON_SPP">Non SPP Siswa</option>
-                            <option value="INCOME">Pemasukan Kas</option>
-                            <option value="EXPENSE">Pengeluaran Kas</option>
-                        </select>
-                    </div>
-                    
-                    <button id="download-global-tx-btn" class="flex items-center px-4 py-2 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700 transition-colors">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5 mr-2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
-                        Download CSV
-                    </button>
-                </div>
-
                 <div class="bg-white rounded-xl shadow-lg overflow-x-auto">
                     <table class="min-w-full divide-y divide-gray-200">
                         <thead>
@@ -3073,32 +2969,17 @@
                                 <th class="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Aksi</th>
                             </tr>
                         </thead>
-                        <tbody class="divide-y divide-gray-200" id="global-tx-table-body">
-                            ${filteredTransactions.length > 0 ? rows : `
-                                <tr><td colspan="6" class="p-4 text-center text-gray-500 italic">Tidak ada transaksi yang tercatat dengan filter saat ini.</td></tr>
+                        <tbody class="divide-y divide-gray-200">
+                            ${allTransactions.length > 0 ? rows : `
+                                <tr><td colspan="6" class="p-4 text-center text-gray-500 italic">Belum ada transaksi yang tercatat dalam sistem.</td></tr>
                             `}
                         </tbody>
                     </table>
                 </div>
             `;
-            
-            // 4. Attach Listeners setelah DOM dirender
-            const filterSelect = document.getElementById('tx-filter-select');
-            if (filterSelect) {
-                filterSelect.value = activeFilter; // Set nilai terakhir
-                filterSelect.addEventListener('change', (e) => {
-                    sessionStorage.setItem('globalTxFilter', e.target.value);
-                    renderContent(); // Pemicu render ulang dengan filter baru
-                });
-            }
-            
-            // 5. Attach Download Listener
-            document.getElementById('download-global-tx-btn').addEventListener('click', () => {
-                exportFullTransactionHistoryToCSV(filteredTransactions);
-            });
         }
         
-        // --- LAPORAN KEUANGAN ---
+        // --- LAPORAN KEUANGAN (BARU) ---
         
         /**
          * Menghitung dan mengeksport Laporan Keuangan ke format CSV (delimiter ; dan BOM).
